@@ -26,6 +26,7 @@ import static software.amazon.smithy.go.codegen.endpoints.EndpointParametersGene
 import static software.amazon.smithy.go.codegen.endpoints.FnGenerator.isFnResultOptional;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,23 +35,26 @@ import java.util.logging.Logger;
 import software.amazon.smithy.codegen.core.Symbol;
 import software.amazon.smithy.go.codegen.GoWriter;
 import software.amazon.smithy.go.codegen.SmithyGoDependency;
+import software.amazon.smithy.go.codegen.SmithyGoTypes;
 import software.amazon.smithy.go.codegen.SymbolUtils;
+import software.amazon.smithy.model.SourceException;
 import software.amazon.smithy.model.SourceLocation;
 import software.amazon.smithy.rulesengine.language.Endpoint;
 import software.amazon.smithy.rulesengine.language.EndpointRuleSet;
-import software.amazon.smithy.rulesengine.language.eval.Type;
+import software.amazon.smithy.rulesengine.language.error.RuleError;
+import software.amazon.smithy.rulesengine.language.evaluation.type.OptionalType;
 import software.amazon.smithy.rulesengine.language.syntax.Identifier;
-import software.amazon.smithy.rulesengine.language.syntax.expr.Expression;
-import software.amazon.smithy.rulesengine.language.syntax.expr.Literal;
-import software.amazon.smithy.rulesengine.language.syntax.expr.Reference;
-import software.amazon.smithy.rulesengine.language.syntax.fn.FunctionDefinition;
-import software.amazon.smithy.rulesengine.language.syntax.fn.IsSet;
+import software.amazon.smithy.rulesengine.language.syntax.expressions.Expression;
+import software.amazon.smithy.rulesengine.language.syntax.expressions.ExpressionVisitor;
+import software.amazon.smithy.rulesengine.language.syntax.expressions.Reference;
+import software.amazon.smithy.rulesengine.language.syntax.expressions.functions.FunctionDefinition;
+import software.amazon.smithy.rulesengine.language.syntax.expressions.functions.IsSet;
+import software.amazon.smithy.rulesengine.language.syntax.expressions.literal.Literal;
 import software.amazon.smithy.rulesengine.language.syntax.parameters.Parameter;
 import software.amazon.smithy.rulesengine.language.syntax.parameters.Parameters;
 import software.amazon.smithy.rulesengine.language.syntax.rule.Condition;
 import software.amazon.smithy.rulesengine.language.syntax.rule.Rule;
-import software.amazon.smithy.rulesengine.language.visit.ExpressionVisitor;
-import software.amazon.smithy.rulesengine.language.visit.RuleValueVisitor;
+import software.amazon.smithy.rulesengine.language.syntax.rule.RuleValueVisitor;
 import software.amazon.smithy.utils.MapUtils;
 import software.amazon.smithy.utils.SmithyBuilder;
 
@@ -145,11 +149,12 @@ public final class EndpointResolverGenerator {
 
     private GoWriter.Writable generateResolveMethodBody(EndpointRuleSet ruleset) {
         var scope = Scope.empty();
-        for (Parameter p : ruleset.getParameters().toList()) {
+        for (Iterator<Parameter> iter = ruleset.getParameters().iterator(); iter.hasNext();) {
             // Required parameters can be dereferenced directly so that read access are
             // always by value.
             // Optional parameters will be dereferenced via conditional checks.
             String identName;
+            Parameter p = iter.next();
             if (p.isRequired()) {
                 identName = getLocalVarParameterName(p);
             } else {
@@ -157,8 +162,7 @@ public final class EndpointResolverGenerator {
             }
             scope = scope.withIdent(p.toExpression(), identName);
         }
-
-        ruleset.typecheck();
+        ruleset.typeCheck();
         return goTemplate("""
                     $paramsWithDefaults:W
                     $validateParams:W
@@ -172,9 +176,13 @@ public final class EndpointResolverGenerator {
                         "validateParams", generateValidateParams(ruleset.getParameters()),
                         "paramsWithDefaults", generateParamsWithDefaults(),
                         "paramVars", (GoWriter.Writable) (GoWriter w) -> {
-                            ruleset.getParameters().toList().stream().filter(Parameter::isRequired).forEach((p) -> {
-                                w.write("$L := *$L", getLocalVarParameterName(p), getMemberParameterName(p));
-                            });
+                            for (Iterator<Parameter> iter = ruleset.getParameters().iterator(); iter.hasNext();) {
+                                Parameter param = iter.next();
+                                if (!param.isRequired()) {
+                                    continue;
+                                }
+                                w.write("$L := *$L", getLocalVarParameterName(param), getMemberParameterName(param));
+                            }
                         },
                         "rules", generateRulesList(ruleset.getRules(), scope)));
     }
@@ -183,8 +191,7 @@ public final class EndpointResolverGenerator {
         return goTemplate("$paramArgName:L = $paramArgName:L.$withDefaults:L()",
                 commonCodegenArgs,
                 MapUtils.of(
-                        "withDefaults", EndpointParametersGenerator.DEFAULT_VALUE_FUNC_NAME
-                ));
+                        "withDefaults", EndpointParametersGenerator.DEFAULT_VALUE_FUNC_NAME));
     }
 
     private GoWriter.Writable generateEmptyResolveMethodBody() {
@@ -224,27 +231,40 @@ public final class EndpointResolverGenerator {
                 w.write("$W", generateRule(rule, rule.getConditions(), scope));
             });
 
-            if (!rules.isEmpty() && !(rules.get(rules.size() - 1).getConditions().isEmpty())) {
-                // the rules tree can be constructed in a manner that tricks us
-                // into writing this twice consecutively (we write it, return
-                // to the outer generateRulesList call, and write it again
-                // without having closed the outer parentheses
+            if (!rules.isEmpty()) {
+                Rule lastRule = rules.get(rules.size() - 1);
+                // Trees are terminal, so we must ensure there's a final fallback condition at
+                // the end of each one.
+                // Generally we know we need to insert one when the final rule in a tree is not
+                // "static" i.e. it has
+                // conditions that might mean it is not selected. Since it may not be chosen
+                // (its set of conditions may
+                // evaluate to false) we MUST put a fallback error return after which we know
+                // will get executed.
                 //
-                // ensure we write only once to avoid unreachable code, but
-                // this should most likely be handled/fixed elsewhere
-                ensureFinalTreeRuleError(w);
+                // However, assignment statements are conflated with conditions in the rules
+                // language, and while certain
+                // assignments DO have a condition associated with them (basically, checking
+                // that the result of the
+                // assignment is not nil), some do not. Therefore, remove "static"
+                // condition/assignments from
+                // consideration.
+                boolean needsFallback = !lastRule.getConditions().stream().filter(
+                        condition -> {
+                            // You can't assert into a FunctionDefinition from an Expression - we have to
+                            // inspect the fn
+                            // member of the node directly.
+                            String fn = condition.toNode().expectObjectNode().expectStringMember("fn").getValue();
+                            // the only static assignment condition, as of this writing...
+                            return !fn.equals("uriEncode");
+                        }).toList().isEmpty();
+                if (needsFallback) {
+                    w.writeGoTemplate(
+                            "return endpoint, $fmtErrorf:T(\"" + ERROR_MESSAGE_ENDOFTREE + "\")",
+                            commonCodegenArgs);
+                }
             }
         };
-    }
-
-    private void ensureFinalTreeRuleError(GoWriter w) {
-        final String expected = "return endpoint, fmt.Errorf(\"" + ERROR_MESSAGE_ENDOFTREE + "\")";
-        if (!w.toString().trim().endsWith(expected)) {
-            w.writeGoTemplate(
-                "return endpoint, $fmtErrorf:T(\"" + ERROR_MESSAGE_ENDOFTREE + "\")",
-                commonCodegenArgs
-            );
-        }
     }
 
     private GoWriter.Writable generateRule(Rule rule, List<Condition> conditions, Scope scope) {
@@ -261,7 +281,7 @@ public final class EndpointResolverGenerator {
         String conditionIdentifier;
         if (condition.getResult().isPresent()) {
             var ident = condition.getResult().get();
-            conditionIdentifier = "_" + ident.asString();
+            conditionIdentifier = "_" + ident.getName().getValue();
 
             // Store the condition result so that it can be referenced in the future by the
             // result identifier.
@@ -270,7 +290,7 @@ public final class EndpointResolverGenerator {
             conditionIdentifier = nameForExpression(fn);
         }
 
-        if (fn.type() instanceof Type.Option || isConditionalFnResultOptional(condition, fn)) {
+        if (fn.type() instanceof OptionalType || isConditionalFnResultOptional(condition, fn)) {
             return goTemplate("""
                     if exprVal := $target:W; exprVal != nil {
                         $conditionIdent:L := *exprVal
@@ -313,9 +333,14 @@ public final class EndpointResolverGenerator {
     }
 
     private static Expression conditionalFunc(Condition condition) {
-        var fn = condition.getFn();
+        var fn = condition.getFunction();
         if (fn instanceof IsSet) {
-            return ((IsSet) fn).getTarget();
+            var setFn = ((IsSet) fn);
+            List<Expression> argv = setFn.getArguments();
+            if (argv.size() == 1) {
+                return argv.get(0);
+            }
+            throw new RuleError(new SourceException("expected 1 argument but found " + argv.size(), setFn));
         }
         return fn;
     }
@@ -398,37 +423,31 @@ public final class EndpointResolverGenerator {
     }
 
     private GoWriter.Writable generateEndpointProperties(Map<Identifier, Literal> properties, Scope scope) {
-        Map<String, Object> propertyTypeArg = MapUtils.of(
-                "memberName", "Properties",
-                "propertyType", SymbolUtils.createValueSymbolBuilder("Properties",
-                        SmithyGoDependency.SMITHY).build());
-
         if (properties.isEmpty()) {
             return emptyGoTemplate();
         }
 
-        var writableProperties = new TreeMap<String, GoWriter.Writable>();
         var generator = new ExpressionGenerator(scope, this.fnProvider);
-        properties.forEach((k, v) -> {
-            writableProperties.put(k.toString(), generator.generate(v));
-        });
+        return goTemplate("""
+                Properties: func() $1T {
+                    var out $1T
+                    $2W
+                    return out
+                }(),
+                """,
+                SmithyGoTypes.Smithy.Properties,
+                GoWriter.ChainWritable.of(
+                        properties.entrySet().stream()
+                                .map(it -> generateSetProperty(generator, it.getKey(), it.getValue()))
+                                .toList()
+                ).compose(false));
+    }
 
-        return goBlockTemplate(
-                """
-                        $memberName:L: func() $propertyType:T{
-                            var out $propertyType:T
-                        """,
-                """
-                        return out
-                        }(),
-                        """, propertyTypeArg,
-                (w) -> {
-                    writableProperties.forEach((k, v) -> {
-                        // TODO these properties should be typed, and ignore properties that are
-                        // unknown.
-                        w.write("out.Set($S, $W)", k, v);
-                    });
-                });
+    private GoWriter.Writable generateSetProperty(ExpressionGenerator generator, Identifier ident, Expression expr) {
+        // FUTURE: add these via GoIntegration?
+        return ident.toString().equals("authSchemes")
+                ? new AuthSchemePropertyGenerator(generator).generate(expr)
+                : goTemplate("out.Set($S, $W)", ident.toString(), generator.generate(expr));
     }
 
     class RuleVisitor implements RuleValueVisitor<GoWriter.Writable> {

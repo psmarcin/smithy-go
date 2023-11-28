@@ -44,11 +44,15 @@ public final class SmithyGoDependency {
     public static final GoDependency SYNC = stdlib("sync");
     public static final GoDependency PATH = stdlib("path");
     public static final GoDependency LOG = stdlib("log");
+    public static final GoDependency OS = stdlib("os");
+    public static final GoDependency PATH_FILEPATH = stdlib("path/filepath");
+    public static final GoDependency REFLECT = stdlib("reflect");
 
     public static final GoDependency SMITHY = smithy(null, "smithy");
     public static final GoDependency SMITHY_TRANSPORT = smithy("transport", "smithytransport");
     public static final GoDependency SMITHY_HTTP_TRANSPORT = smithy("transport/http", "smithyhttp");
     public static final GoDependency SMITHY_MIDDLEWARE = smithy("middleware");
+    public static final GoDependency SMITHY_PRIVATE_PROTOCOL = smithy("private/protocol", "smithyprivateprotocol");
     public static final GoDependency SMITHY_TIME = smithy("time", "smithytime");
     public static final GoDependency SMITHY_HTTP_BINDING = smithy("encoding/httpbinding");
     public static final GoDependency SMITHY_JSON = smithy("encoding/json", "smithyjson");
@@ -62,6 +66,7 @@ public final class SmithyGoDependency {
     public static final GoDependency SMITHY_DOCUMENT = smithy("document", "smithydocument");
     public static final GoDependency SMITHY_DOCUMENT_JSON = smithy("document/json", "smithydocumentjson");
     public static final GoDependency SMITHY_SYNC = smithy("sync", "smithysync");
+    public static final GoDependency SMITHY_AUTH = smithy("auth", "smithyauth");
     public static final GoDependency SMITHY_AUTH_BEARER = smithy("auth/bearer");
     public static final GoDependency SMITHY_ENDPOINTS = smithy("endpoints", "smithyendpoints");
     public static final GoDependency SMITHY_ENDPOINT_RULESFN = smithy("endpoints/private/rulesfn");
