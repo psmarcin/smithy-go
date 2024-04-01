@@ -37,6 +37,7 @@ public final class SmithyGoDependency {
     public static final GoDependency JSON = stdlib("encoding/json");
     public static final GoDependency IO = stdlib("io");
     public static final GoDependency IOUTIL = stdlib("io/ioutil");
+    public static final GoDependency FS = stdlib("io/fs");
     public static final GoDependency CRYPTORAND = stdlib("crypto/rand", "cryptorand");
     public static final GoDependency TESTING = stdlib("testing");
     public static final GoDependency ERRORS = stdlib("errors");
@@ -59,6 +60,7 @@ public final class SmithyGoDependency {
     public static final GoDependency SMITHY_HTTP_BINDING = smithy("encoding/httpbinding");
     public static final GoDependency SMITHY_JSON = smithy("encoding/json", "smithyjson");
     public static final GoDependency SMITHY_XML = smithy("encoding/xml", "smithyxml");
+    public static final GoDependency SMITHY_CBOR = smithy("encoding/cbor", "smithycbor");
     public static final GoDependency SMITHY_IO = smithy("io", "smithyio");
     public static final GoDependency SMITHY_LOGGING = smithy("logging");
     public static final GoDependency SMITHY_PTR = smithy("ptr");
@@ -67,20 +69,17 @@ public final class SmithyGoDependency {
     public static final GoDependency SMITHY_WAITERS = smithy("waiter", "smithywaiter");
     public static final GoDependency SMITHY_DOCUMENT = smithy("document", "smithydocument");
     public static final GoDependency SMITHY_DOCUMENT_JSON = smithy("document/json", "smithydocumentjson");
+    public static final GoDependency SMITHY_DOCUMENT_CBOR = smithy("document/cbor", "smithydocumentcbor");
     public static final GoDependency SMITHY_SYNC = smithy("sync", "smithysync");
     public static final GoDependency SMITHY_AUTH = smithy("auth", "smithyauth");
     public static final GoDependency SMITHY_AUTH_BEARER = smithy("auth/bearer");
     public static final GoDependency SMITHY_ENDPOINTS = smithy("endpoints", "smithyendpoints");
     public static final GoDependency SMITHY_ENDPOINT_RULESFN = smithy("endpoints/private/rulesfn");
 
-    public static final GoDependency GO_CMP = goCmp("cmp");
-    public static final GoDependency GO_CMP_OPTIONS = goCmp("cmp/cmpopts");
-
     public static final GoDependency GO_JMESPATH = goJmespath(null);
     public static final GoDependency MATH = stdlib("math");
 
     private static final String SMITHY_SOURCE_PATH = "github.com/aws/smithy-go";
-    private static final String GO_CMP_SOURCE_PATH = "github.com/google/go-cmp";
     private static final String GO_JMESPATH_SOURCE_PATH = "github.com/jmespath/go-jmespath";
 
     private SmithyGoDependency() {
@@ -115,10 +114,6 @@ public final class SmithyGoDependency {
         return relativePackage(SMITHY_SOURCE_PATH, relativePath, Versions.SMITHY_GO, alias);
     }
 
-    private static GoDependency goCmp(String relativePath) {
-        return relativePackage(GO_CMP_SOURCE_PATH, relativePath, Versions.GO_CMP, null);
-    }
-
     private static GoDependency goJmespath(String relativePath) {
         return relativePackage(GO_JMESPATH_SOURCE_PATH, relativePath, Versions.GO_JMESPATH, null);
     }
@@ -138,7 +133,6 @@ public final class SmithyGoDependency {
 
     private static final class Versions {
         private static final String GO_STDLIB = "1.15";
-        private static final String GO_CMP = "v0.5.4";
         private static final String SMITHY_GO = "v1.4.0";
         private static final String GO_JMESPATH = "v0.4.0";
     }

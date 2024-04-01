@@ -193,6 +193,14 @@ public final class SymbolUtils {
                 .orElse(false);
     }
 
+    public static boolean isPointable(Symbol symbol) {
+        return symbol.getProperty(SymbolUtils.POINTABLE, Boolean.class).orElse(false);
+    }
+
+    public static Symbol getReference(Symbol symbol) {
+        return symbol.getProperty(SymbolUtils.GO_ELEMENT_TYPE, Symbol.class).orElse(null);
+    }
+
     /**
      * Builds a symbol within the context of the package in which codegen is taking place.
      *
@@ -201,5 +209,18 @@ public final class SymbolUtils {
      */
     public static Symbol buildPackageSymbol(String name) {
         return Symbol.builder().name(name).build();
+    }
+
+    public static Symbol buildSymbol(String name, String namespace) {
+        return Symbol.builder()
+                .name(name)
+                .namespace(namespace, ".")
+                .build();
+    }
+
+    public static boolean isNilable(Symbol symbol) {
+        return isPointable(symbol)
+                || symbol.getProperty(SymbolUtils.GO_SLICE).isPresent()
+                || symbol.getProperty(SymbolUtils.GO_MAP).isPresent();
     }
 }
