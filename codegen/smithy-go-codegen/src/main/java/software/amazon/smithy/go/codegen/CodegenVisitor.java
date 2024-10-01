@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -75,6 +75,7 @@ final class CodegenVisitor extends ShapeVisitor.Default<Void> {
     private final List<RuntimeClientPlugin> runtimePlugins = new ArrayList<>();
     private final ProtocolDocumentGenerator protocolDocumentGenerator;
     private final EventStreamGenerator eventStreamGenerator;
+    private final GoCodegenContext ctx;
 
     CodegenVisitor(PluginContext context) {
         // Load all integrations.
@@ -154,6 +155,8 @@ final class CodegenVisitor extends ShapeVisitor.Default<Void> {
         protocolDocumentGenerator = new ProtocolDocumentGenerator(settings, model, writers);
 
         this.eventStreamGenerator = new EventStreamGenerator(settings, model, writers, symbolProvider, service);
+
+        this.ctx = new GoCodegenContext(model, settings, symbolProvider, fileManifest, writers, integrations);
     }
 
     private static ProtocolGenerator resolveProtocolGenerator(
@@ -209,6 +212,7 @@ final class CodegenVisitor extends ShapeVisitor.Default<Void> {
         for (GoIntegration integration : integrations) {
             integration.writeAdditionalFiles(settings, model, symbolProvider, writers::useFileWriter);
             integration.writeAdditionalFiles(settings, model, symbolProvider, writers);
+            integration.writeAdditionalFiles(ctx);
         }
 
         eventStreamGenerator.generateEventStreamInterfaces();
@@ -359,12 +363,9 @@ final class CodegenVisitor extends ShapeVisitor.Default<Void> {
             TopDownIndex topDownIndex = model.getKnowledge(TopDownIndex.class);
             Set<OperationShape> containedOperations = new TreeSet<>(topDownIndex.getContainedOperations(service));
             for (OperationShape operation : containedOperations) {
-                Symbol operationSymbol = symbolProvider.toSymbol(operation);
-
-                writers.useShapeWriter(
-                        operation, operationWriter -> new OperationGenerator(settings, model, symbolProvider,
-                                operationWriter, service, operation, operationSymbol, applicationProtocol,
-                                protocolGenerator, runtimePlugins).run());
+                writers.useShapeWriter(operation, operationWriter ->
+                        new OperationGenerator(ctx, operationWriter, operation, protocolGenerator, runtimePlugins)
+                                .run());
             }
         });
 

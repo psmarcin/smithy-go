@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ public final class GoWriter extends SymbolWriter<GoWriter, ImportDeclarations> {
 
     private static final Logger LOGGER = Logger.getLogger(GoWriter.class.getName());
     private static final int DEFAULT_DOC_WRAP_LENGTH = 80;
-    private static final Pattern ARGUMENT_NAME_PATTERN = Pattern.compile("\\$([a-z][a-zA-Z_0-9]+)(:\\w)?");
+    private static final Pattern ARGUMENT_NAME_PATTERN = Pattern.compile("\\$([a-z][a-zA-Z_0-9]\\.+)(:\\w)?");
     private final String fullPackageName;
     private final boolean innerWriter;
     private final List<String> buildTags = new ArrayList<>();
@@ -96,6 +96,12 @@ public final class GoWriter extends SymbolWriter<GoWriter, ImportDeclarations> {
         putFormatter('P', new PointableGoSymbolFormatter());
         putFormatter('W', new GoWritableInjector());
         putFormatter('D', new GoDependencyFormatter());
+
+        putContext("fmt.Sprintf", SmithyGoDependency.FMT.func("Sprintf"));
+        putContext("fmt.Errorf", SmithyGoDependency.FMT.func("Errorf"));
+        putContext("errors.As", SmithyGoDependency.ERRORS.func("As"));
+        putContext("context.Context", SmithyGoDependency.CONTEXT.func("Context"));
+        putContext("time.Now", SmithyGoDependency.TIME.func("Now"));
 
         if (!innerWriter) {
             packageDocs = new GoWriter(this.fullPackageName, true);
@@ -932,7 +938,7 @@ public final class GoWriter extends SymbolWriter<GoWriter, ImportDeclarations> {
      * Implements Go symbol formatting for the {@code $P} formatter. This is identical to the $T
      * formatter, except that it will add a * to symbols that can be pointers.
      */
-    private class PointableGoSymbolFormatter extends GoSymbolFormatter {
+    private final class PointableGoSymbolFormatter extends GoSymbolFormatter {
         @Override
         public String apply(Object type, String indent) {
             String formatted = super.apply(type, indent);
@@ -957,7 +963,7 @@ public final class GoWriter extends SymbolWriter<GoWriter, ImportDeclarations> {
         }
     }
 
-    class GoWritableInjector extends GoSymbolFormatter {
+    private final class GoWritableInjector extends GoSymbolFormatter {
         @Override
         public String apply(Object type, String indent) {
             if (!(type instanceof Writable)) {
@@ -975,7 +981,7 @@ public final class GoWriter extends SymbolWriter<GoWriter, ImportDeclarations> {
     /**
      * Implements Go symbol formatting for the {@code $D} formatter.
      */
-    private class GoDependencyFormatter implements BiFunction<Object, String, String> {
+    private final class GoDependencyFormatter implements BiFunction<Object, String, String> {
         @Override
         public String apply(Object type, String indent) {
             if (type instanceof GoDependency) {

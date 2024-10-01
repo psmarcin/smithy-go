@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -15,17 +15,18 @@
 
 package software.amazon.smithy.go.codegen.integration;
 
+import static java.util.Collections.emptySet;
 import static software.amazon.smithy.go.codegen.GoWriter.autoDocTemplate;
 import static software.amazon.smithy.go.codegen.GoWriter.goTemplate;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.codegen.core.Symbol;
 import software.amazon.smithy.codegen.core.SymbolProvider;
 import software.amazon.smithy.go.codegen.ClientOptions;
-import software.amazon.smithy.go.codegen.GoDelegator;
-import software.amazon.smithy.go.codegen.GoSettings;
+import software.amazon.smithy.go.codegen.GoCodegenContext;
 import software.amazon.smithy.go.codegen.GoWriter;
 import software.amazon.smithy.go.codegen.SmithyGoDependency;
 import software.amazon.smithy.go.codegen.SymbolUtils;
@@ -53,27 +54,30 @@ public class Waiters implements GoIntegration {
     private static final String WAITER_INVOKER_FUNCTION_NAME = "Wait";
     private static final String WAITER_INVOKER_WITH_OUTPUT_FUNCTION_NAME = "WaitForOutput";
 
-    @Override
-    public void writeAdditionalFiles(
-            GoSettings settings,
-            Model model,
-            SymbolProvider symbolProvider,
-            GoDelegator goDelegator
-    ) {
-        ServiceShape serviceShape = settings.getService(model);
-        TopDownIndex topDownIndex = TopDownIndex.of(model);
+    public Set<Symbol> getAdditionalClientOptions() {
+        return emptySet();
+    }
 
-        topDownIndex.getContainedOperations(serviceShape).stream()
+    public boolean enabledForService(Model model, ShapeId service) {
+        return true;
+    }
+
+    @Override
+    public void writeAdditionalFiles(GoCodegenContext ctx) {
+        if (!enabledForService(ctx.model(), ctx.settings().getService())) {
+            return;
+        }
+
+        var service = ctx.settings().getService(ctx.model());
+
+        TopDownIndex.of(ctx.model()).getContainedOperations(service).stream()
                 .forEach(operation -> {
                     if (!operation.hasTrait(WaitableTrait.ID)) {
                         return;
                     }
 
                     Map<String, Waiter> waiters = operation.expectTrait(WaitableTrait.class).getWaiters();
-
-                    goDelegator.useShapeWriter(operation, writer -> {
-                        generateOperationWaiter(model, symbolProvider, writer, serviceShape, operation, waiters);
-                    });
+                    generateOperationWaiter(ctx, operation, waiters);
                 });
     }
 
@@ -81,31 +85,18 @@ public class Waiters implements GoIntegration {
     /**
      * Generates all waiter components used for the operation.
      */
-    private void generateOperationWaiter(
-            Model model,
-            SymbolProvider symbolProvider,
-            GoWriter writer,
-            ServiceShape service,
-            OperationShape operation,
-            Map<String, Waiter> waiters
-    ) {
-        // generate waiter function
-        waiters.forEach((name, waiter) -> {
-            // write waiter options
-            generateWaiterOptions(model, symbolProvider, writer, operation, name, waiter);
-
-            // write waiter client
-            generateWaiterClient(model, symbolProvider, writer, operation, name, waiter);
-
-            // write waiter specific invoker
-            generateWaiterInvoker(model, symbolProvider, writer, operation, name, waiter);
-
-            // write waiter specific invoker with output
-            generateWaiterInvokerWithOutput(model, symbolProvider, writer, operation, name, waiter);
-
-            // write waiter state mutator for each waiter
-            generateRetryable(model, symbolProvider, writer, service, operation, name, waiter);
-
+    private void generateOperationWaiter(GoCodegenContext ctx, OperationShape operation, Map<String, Waiter> waiters) {
+        var model = ctx.model();
+        var symbolProvider = ctx.symbolProvider();
+        var service = ctx.settings().getService(model);
+        ctx.writerDelegator().useShapeWriter(operation, writer -> {
+            waiters.forEach((name, waiter) -> {
+                generateWaiterOptions(model, symbolProvider, writer, operation, name, waiter);
+                generateWaiterClient(model, symbolProvider, writer, operation, name, waiter);
+                generateWaiterInvoker(model, symbolProvider, writer, operation, name, waiter);
+                generateWaiterInvokerWithOutput(model, symbolProvider, writer, operation, name, waiter);
+                generateRetryable(model, symbolProvider, writer, service, operation, name, waiter);
+            });
         });
     }
 
@@ -440,10 +431,22 @@ public class Waiters implements GoIntegration {
                         }).write("");
 
                         // make a request
+                        var baseOpts = GoWriter.ChainWritable.of(
+                                getAdditionalClientOptions().stream()
+                                        .map(it -> goTemplate("$T,", it))
+                                        .toList()
+                        ).compose(false);
                         writer.openBlock("out, err := w.client.$T(ctx, params, func (o *Options) { ", "})",
                                 operationSymbol, () -> {
+                                    writer.write("""
+                                            baseOpts := []func(*Options) {
+                                                $W
+                                            }""", baseOpts);
                                     writer.write("o.APIOptions = append(o.APIOptions, apiOptions...)");
                                     writer.write("""
+                                            for _, opt := range baseOpts {
+                                                opt(o)
+                                            }
                                             for _, opt := range options.ClientOptions {
                                                 opt(o)
                                             }""");

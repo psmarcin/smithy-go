@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ public final class SmithyGoDependency {
     public static final GoDependency ERRORS = stdlib("errors");
     public static final GoDependency XML = stdlib("encoding/xml");
     public static final GoDependency SYNC = stdlib("sync");
+    public static final GoDependency ATOMIC = stdlib("sync/atomic");
     public static final GoDependency PATH = stdlib("path");
     public static final GoDependency LOG = stdlib("log");
     public static final GoDependency OS = stdlib("os");
@@ -75,6 +76,8 @@ public final class SmithyGoDependency {
     public static final GoDependency SMITHY_AUTH_BEARER = smithy("auth/bearer");
     public static final GoDependency SMITHY_ENDPOINTS = smithy("endpoints", "smithyendpoints");
     public static final GoDependency SMITHY_ENDPOINT_RULESFN = smithy("endpoints/private/rulesfn");
+    public static final GoDependency SMITHY_TRACING = smithy("tracing");
+    public static final GoDependency SMITHY_METRICS = smithy("metrics");
 
     public static final GoDependency GO_JMESPATH = goJmespath(null);
     public static final GoDependency MATH = stdlib("math");
@@ -115,7 +118,7 @@ public final class SmithyGoDependency {
     }
 
     private static GoDependency goJmespath(String relativePath) {
-        return relativePackage(GO_JMESPATH_SOURCE_PATH, relativePath, Versions.GO_JMESPATH, null);
+        return relativePackage(GO_JMESPATH_SOURCE_PATH, relativePath, Versions.GO_JMESPATH, "jmespath");
     }
 
     private static GoDependency relativePackage(
