@@ -852,10 +852,8 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
                     });
         }
 
-        boolean allowZeroStrings = location != HttpBinding.Location.HEADER;
-
         GoValueAccessUtils.writeIfNonZeroValueMember(context.getModel(), context.getSymbolProvider(), writer,
-                memberShape, "v", allowZeroStrings, memberShape.isRequired(), (operand) -> {
+                memberShape, "v", true, memberShape.isRequired(), (operand) -> {
                     final String locationName = binding.getLocationName().isEmpty()
                             ? memberShape.getMemberName() : binding.getLocationName();
                     switch (location) {
@@ -877,11 +875,8 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
                             writer.write("hv := encoder.Headers($S)", getCanonicalHeader(locationName));
                             writer.addUseImports(SmithyGoDependency.NET_HTTP);
                             writer.openBlock("for mapKey, mapVal := range $L {", "}", operand, () -> {
-                                GoValueAccessUtils.writeIfNonZeroValue(context.getModel(), writer, valueMemberShape,
-                                        "mapVal", false, false, () -> {
-                                            writeHeaderBinding(context, valueMemberShape, "mapVal", location,
-                                                    "http.CanonicalHeaderKey(mapKey)", "hv");
-                                        });
+                                writeHeaderBinding(context, valueMemberShape, "mapVal", location,
+                                        "http.CanonicalHeaderKey(mapKey)", "hv");
                             });
                             break;
                         case LABEL:
@@ -983,6 +978,13 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
         }
 
         MemberShape collectionMemberShape = CodegenUtils.expectCollectionShape(targetShape).getMember();
+        // On empty collection header will be set to an empty value
+        writer.openBlock("if len($L) == 0 {", "}", operand, () -> {
+            writeHttpBindingSetter(context, writer, collectionMemberShape, location, operand,
+                    (w, s) -> {
+                        w.writeInline("$L.AddHeader($L).String(\"\")", dest, locationName);
+                    });
+        });
         writer.openBlock("for i := range $L {", "}", operand, () -> {
             // Only set non-empty non-nil header values
             String indexedOperand = operand + "[i]";
