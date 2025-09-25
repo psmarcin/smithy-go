@@ -18,6 +18,7 @@ package software.amazon.smithy.go.codegen.protocol;
 import static software.amazon.smithy.go.codegen.GoStackStepMiddlewareGenerator.createDeserializeStepMiddleware;
 import static software.amazon.smithy.go.codegen.GoWriter.emptyGoTemplate;
 import static software.amazon.smithy.go.codegen.GoWriter.goTemplate;
+import static software.amazon.smithy.go.codegen.SmithyGoDependency.SMITHY_TRACING;
 import static software.amazon.smithy.go.codegen.integration.ProtocolGenerator.getDeserializeMiddlewareName;
 
 import software.amazon.smithy.go.codegen.GoStdlibTypes;
@@ -62,6 +63,12 @@ public abstract class DeserializeResponseMiddleware implements GoWriter.Writable
     private GoWriter.Writable generateHandleDeserialize() {
         return goTemplate("""
                 out, metadata, err = next.HandleDeserialize(ctx, in)
+
+                _, span := $startSpan:T(ctx, "OperationDeserializer")
+                endTimer := startMetricTimer(ctx, "client.call.deserialization_duration")
+                defer endTimer()
+                defer span.End()
+
                 if err != nil {
                     return out, metadata, err
                 }
@@ -76,6 +83,7 @@ public abstract class DeserializeResponseMiddleware implements GoWriter.Writable
                 return out, metadata, nil
                 """,
                 MapUtils.of(
+                        "startSpan", SMITHY_TRACING.func("StartSpan"),
                         "response", generator.getApplicationProtocol().getResponseType(),
                         "deserialize", generateDeserialize(),
                         "errorf", GoStdlibTypes.Fmt.Errorf

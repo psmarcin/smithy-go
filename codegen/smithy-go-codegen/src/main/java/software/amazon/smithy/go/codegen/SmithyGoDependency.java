@@ -49,6 +49,7 @@ public final class SmithyGoDependency {
     public static final GoDependency OS = stdlib("os");
     public static final GoDependency PATH_FILEPATH = stdlib("path/filepath");
     public static final GoDependency REFLECT = stdlib("reflect");
+    public static final GoDependency SLICES = stdlib("slices");
 
     public static final GoDependency SMITHY = smithy(null, "smithy");
     public static final GoDependency SMITHY_TRANSPORT = smithy("transport", "smithytransport");
@@ -79,11 +80,9 @@ public final class SmithyGoDependency {
     public static final GoDependency SMITHY_TRACING = smithy("tracing");
     public static final GoDependency SMITHY_METRICS = smithy("metrics");
 
-    public static final GoDependency GO_JMESPATH = goJmespath(null);
     public static final GoDependency MATH = stdlib("math");
 
     private static final String SMITHY_SOURCE_PATH = "github.com/aws/smithy-go";
-    private static final String GO_JMESPATH_SOURCE_PATH = "github.com/jmespath/go-jmespath";
 
     private SmithyGoDependency() {
     }
@@ -115,10 +114,6 @@ public final class SmithyGoDependency {
 
     private static GoDependency smithy(String relativePath, String alias) {
         return relativePackage(SMITHY_SOURCE_PATH, relativePath, Versions.SMITHY_GO, alias);
-    }
-
-    private static GoDependency goJmespath(String relativePath) {
-        return relativePackage(GO_JMESPATH_SOURCE_PATH, relativePath, Versions.GO_JMESPATH, "jmespath");
     }
 
     private static GoDependency relativePackage(

@@ -134,18 +134,27 @@ public class ClientOptions implements GoWriter.Writable {
                 $1W
                 HTTPClient HTTPClient
 
+                $6W
+                Interceptors $7T
+
                 $2W
                 AuthSchemeResolver $4L
 
                 $3W
                 AuthSchemes []$5T
+
+                $8W
+                AuthSchemePreference []string
                 """,
                 goDocTemplate("The HTTP client to invoke API calls with. "
                         + "Defaults to client's default HTTP implementation if nil."),
                 goDocTemplate("The auth scheme resolver which determines how to authenticate for each operation."),
                 goDocTemplate("The list of auth schemes supported by the client."),
                 AuthSchemeResolverGenerator.INTERFACE_NAME,
-                SmithyGoTypes.Transport.Http.AuthScheme);
+                SmithyGoTypes.Transport.Http.AuthScheme,
+                goDocTemplate("Client registry of operation interceptors."),
+                SmithyGoDependency.SMITHY_HTTP_TRANSPORT.struct("InterceptorRegistry"),
+                goDocTemplate("Priority list of preferred auth scheme names (e.g. sigv4a)."));
     }
 
     private GoWriter.Writable generateCopy() {
@@ -155,6 +164,7 @@ public class ClientOptions implements GoWriter.Writable {
                     to := o
                     to.APIOptions = make([]func($2P) error, len(o.APIOptions))
                     copy(to.APIOptions, o.APIOptions)
+                    to.Interceptors = o.Interceptors.Copy()
 
                     return to
                 }
